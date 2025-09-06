@@ -1,6 +1,6 @@
-# 🌿 SoulCare – Mental Healthcare Web App
+#  MindHaven – Mental Healthcare Web App
 
-**SoulCare** is an AI-powered mental healthcare web application designed to provide **empathetic, private, and accessible emotional support** through conversational AI, mood tracking, and self-care resources. Built with modern web technologies and NLP, it serves as a **first-level support system** for individuals experiencing emotional distress, especially **anxiety and depression**.
+**MindHaven**is an AI-powered mental healthcare web application designed to provide **empathetic, private, and accessible emotional support**through conversational AI, mood tracking, and self-care resources. Built with modern web technologies and NLP, it serves as a first-level support system for individuals experiencing **emotional distress, especially anxiety and depression**.
 
 ---
 
@@ -89,6 +89,6 @@ UI Usability Satisfaction	92% rated Excellent/Good
 This project is intended for academic and research purposes. For reuse or deployment in production environments, contact the authors.
 
 👨‍💻 Developed By
-Pushp Choudhary
-Department of Computer Science, NIET, Greater Noida
+Chetan Chauhan
+Department of Computer Science and Engineering (IOT), NIET, Greater Noida
 
