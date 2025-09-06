@@ -89,6 +89,6 @@ UI Usability Satisfaction	92% rated Excellent/Good
 This project is intended for academic and research purposes. For reuse or deployment in production environments, contact the authors.
 
 👨‍💻 Developed By
-Chetan Chauhan
+Chetan Chauhan,
 Department of Computer Science and Engineering (IOT), NIET, Greater Noida
 
