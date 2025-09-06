@@ -5,7 +5,7 @@ import Image from 'next/image';
 export default function AboutPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-start p-8 bg-white text-gray-800">
-      <h1 className="text-4xl font-bold text-indigo-600 mb-4">🌱 About Mindhaven</h1> {/* Changed MindHaven to MindHaven */}
+      <h1 className="text-4xl font-bold text-indigo-600 mb-4">🌱 About MindHaven</h1> {/* Changed MindHaven to MindHaven */}
 
       <div className="max-w-3xl text-center space-y-6 mb-12">
         <p className="text-lg">

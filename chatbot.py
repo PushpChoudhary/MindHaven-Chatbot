@@ -72,7 +72,7 @@ def initialize_llm():
     try:
         # Get the API key from the environment variable
         groq_api_key = os.getenv("GROQ_API_KEY")
-        print(f"--- Loaded API Key: {groq_api_key} ---") 
+        
         if not groq_api_key:
             logging.error("GROQ_API_KEY environment variable not set.")
             return None
