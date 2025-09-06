@@ -1,0 +1,13 @@
+from sentence_transformers import SentenceTransformer
+import numpy as np
+
+# Load a sentence embedding model
+model = SentenceTransformer("all-MiniLM-L6-v2")
+
+# Generate embeddings for the 'short_question' column
+embeddings = model.encode(df["short_question"].tolist(), convert_to_numpy=True)
+
+# Save the embeddings as a NumPy file
+vector_file_path = "/mnt/data/short_question_vectors.npy"
+np.save(vector_file_path, embeddings)
+

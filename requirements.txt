@@ -1,0 +1,22 @@
+# Flask and Server
+Flask==3.0.3
+Flask-Cors==4.0.1
+gunicorn==22.0.0
+python-dotenv==1.0.1
+
+# LangChain Core and Integrations
+langchain==0.2.6
+langchain-groq==0.1.6
+langchain-huggingface==0.0.3
+langchain-community==0.2.6
+langchain-chroma==0.1.2
+
+# Document Loaders and Splitters
+pypdf==4.2.0
+
+# Vector Store and Embeddings
+chromadb==0.5.3
+sentence-transformers==3.0.1
+
+# For running HuggingFace models
+torch==2.3.1

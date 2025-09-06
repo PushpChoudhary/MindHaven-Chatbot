@@ -1,0 +1,5 @@
+#for secrets
+.env
+
+# For frontend dependencies
+node_modules/
