@@ -1,7 +1,7 @@
 #  🕊️MindHaven – Mental Healthcare Web App
 
 **MindHaven**is an AI-powered mental healthcare web application designed to provide **empathetic, private, and accessible emotional support**through conversational AI, mood tracking, and self-care resources. Built with modern web technologies and NLP, it serves as a first-level support system for individuals experiencing **emotional distress, especially anxiety and depression**.
----
+
 [![Status](https://img.shields.io/badge/status-active-success.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](/LICENSE)
 <br>
