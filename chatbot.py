@@ -1,10 +1,14 @@
 import logging
 import os
+import csv
 from datetime import datetime
+import sqlite3
+
+import os
+from dotenv import load_dotenv
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
-from dotenv import load_dotenv
 
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -14,44 +18,79 @@ from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-# --- Setup ---
-load_dotenv()  # Loads variables from .env file
+# Initialize Flask app and enable CORS
 app = Flask(__name__)
 CORS(app)
+
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 
-# --- Database Configuration ---
-# This will get the DATABASE_URL we set on Render from environment variables
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///chat_history.db') # Uses local sqlite if DATABASE_URL is not set
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+# SQLite DB initialization for chat history
+def init_db():
+    with sqlite3.connect("chat_history.db") as conn:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS chat (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
+                sender TEXT,
+                message TEXT
+            )
+        ''')
 
-# --- Database Models (Replaces CSV and old DB) ---
-class Appointment(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(100), nullable=False)
-    datetime_val = db.Column(db.String(100), nullable=False)
-    message = db.Column(db.Text, nullable=True)
-    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+# CSV file for appointment booking
+CSV_FILE = 'appointments.csv'
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Name', 'Email', 'DateTime', 'Message', 'SubmittedAt'])
 
-class ChatHistory(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.String(100), nullable=False)
-    sender = db.Column(db.String(50), nullable=False)
-    message = db.Column(db.Text, nullable=False)
+# Appointment booking endpoint
+@app.route('/book-appointment', methods=['POST'])
+def book_appointment():
+    data = request.get_json()
+    name = data.get('name')
+    email = data.get('email')
+    datetime_val = data.get('datetime')
+    message = data.get('message', '')
 
-# --- Your Core AI and LangChain Functions (UNCHANGED) ---
-def initialize_llm():
+    if not name or not email or not datetime_val:
+        return jsonify({"error": "Name, email, and datetime are required"}), 400
+
     try:
+        with open(CSV_FILE, 'a', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([name, email, datetime_val, message, datetime.now().isoformat()])
+        logging.info(f"Appointment saved: {name}, {email}, {datetime_val}")
+        return jsonify({"message": f"Hi {name}, your appointment on {datetime_val} has been booked. We'll reach out to {email}."})
+    except Exception as e:
+        logging.error(f"Failed to save appointment: {e}", exc_info=True)
+        return jsonify({"error": "Failed to book appointment"}), 500
+
+
+load_dotenv()
+# Initialize Groq LLM
+import os
+import logging
+from langchain_groq import ChatGroq
+
+def initialize_llm():
+    """
+    Initializes and returns the ChatGroq LLM, securely loading the API key
+    from environment variables.
+    """
+    try:
+        # Get the API key from the environment variable
         groq_api_key = os.getenv("GROQ_API_KEY")
+
+        # Check if the API key was found
         if not groq_api_key:
             logging.error("GROQ_API_KEY environment variable not set.")
             return None
+
         llm = ChatGroq(
             temperature=0,
-            groq_api_key=groq_api_key,
-            model_name="gemma2-9b-it" # Using the latest working model
+            groq_api_key=groq_api_key,  # Use the key from the variable
+            model_name="gemma2-9b-it"   # Updated to a current, working model
         )
         logging.info("LLM initialized successfully")
         return llm
@@ -59,16 +98,17 @@ def initialize_llm():
         logging.error(f"Error initializing LLM: {e}", exc_info=True)
         return None
 
+# Create or load vector DB from PDFs
 def create_vector_db():
     try:
         loader = DirectoryLoader("./Data/", glob='*.pdf', loader_cls=PyPDFLoader)
         documents = loader.load()
         if not documents:
             logging.warning("No documents found in ./Data/")
-            return None
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
         texts = text_splitter.split_documents(documents)
         embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')
+
         vector_db = Chroma.from_documents(texts, embeddings, persist_directory='./chroma_db')
         vector_db.persist()
         logging.info("ChromaDB created and persisted")
@@ -77,16 +117,28 @@ def create_vector_db():
         logging.error(f"Error creating vector DB: {e}", exc_info=True)
         return None
 
+# Setup QA chain with prompt template
 def setup_qa_chain(vector_db, llm):
     try:
         retriever = vector_db.as_retriever()
+
         prompt_template = """
-        You are a friendly, empathetic, and supportive mental health chatbot...
-        {context}
-        User: {question}
-        Chatbot:
-        """
+You are a friendly, empathetic, and supportive mental health chatbot. Your role is to act like a genuine friend who listens carefully and responds with kindness, warmth, and understanding. Avoid sounding robotic or overly formal. Always focus on the user's emotional well-being and guide them thoughtfully through their concerns.
+
+When the user is casually chatting or greeting you (like saying "hi" or "how are you"), respond in a light, friendly tone — do **not** mention anything about stored data or context.
+
+However, when the user expresses a concern, problem, or question related to their mental or emotional health, provide thoughtful, practical, and supportive responses based on the context. Use your knowledge and compassion to help them feel heard and supported. Never say you were given the context or data — just respond naturally as if you're simply a good friend who's always been listening.
+
+Conversation context:
+{context}
+
+User: {question}
+Chatbot:
+"""
+
+        # Change input variable 'query' -> 'question' to match chain input key
         PROMPT = PromptTemplate(template=prompt_template, input_variables=['context', 'question'])
+
         qa_chain = RetrievalQA.from_chain_type(
             llm=llm,
             chain_type="stuff",
@@ -99,27 +151,53 @@ def setup_qa_chain(vector_db, llm):
         logging.error(f"Error setting up QA chain: {e}", exc_info=True)
         return None
 
-# --- Updated Flask Routes (Using the New Database) ---
-@app.route('/book-appointment', methods=['POST'])
-def book_appointment():
-    data = request.get_json()
-    name, email, datetime_val = data.get('name'), data.get('email'), data.get('datetime')
-    message = data.get('message', '')
+# Get conversation history text for context
+def get_conversation_history(session_id):
+    with sqlite3.connect("chat_history.db") as conn:
+        cursor = conn.execute(
+            "SELECT sender, message FROM chat WHERE session_id = ? ORDER BY id ASC", (session_id,)
+        )
+        rows = cursor.fetchall()
 
-    if not all([name, email, datetime_val]):
-        return jsonify({"error": "Name, email, and datetime are required"}), 400
+    history_text = ""
+    for sender, message in rows:
+        # Format with capitalized sender to align with prompt style
+        sender_label = "User" if sender.lower() == "user" else "Chatbot"
+        history_text += f"{sender_label}: {message}\n"
+    return history_text
 
+# Core chat function
+def chat(session_id, query):
+    global qa_chain, llm, vector_db
     try:
-        new_appointment = Appointment(name=name, email=email, datetime_val=datetime_val, message=message)
-        db.session.add(new_appointment)
-        db.session.commit()
-        logging.info(f"Appointment saved for {name}")
-        return jsonify({"message": f"Hi {name}, your appointment on {datetime_val} has been booked."})
-    except Exception as e:
-        db.session.rollback()
-        logging.error(f"Failed to save appointment: {e}", exc_info=True)
-        return jsonify({"error": "Failed to book appointment"}), 500
+        logging.info(f"chat() called with session_id={session_id}, query={query}")
 
+        if not query or query.strip() == "":
+            return {"error": "No message provided or query is empty"}
+
+        if qa_chain is None or llm is None or vector_db is None:
+            return {"error": "QA chain, LLM, or vector database not initialized properly"}
+
+        conversation_context = get_conversation_history(session_id)
+        logging.info(f"Conversation context retrieved: {conversation_context}")
+
+        response_text = qa_chain.invoke({
+            "query": query,
+            "context": conversation_context
+        })
+
+        logging.info(f"QA chain response: {response_text}")
+
+        if not response_text.get("result", "").strip():
+            return {"error": "Received empty response from QA chain"}
+
+        return {"response": response_text["result"]}
+
+    except Exception as e:
+        logging.error(f"Error in chat function: {e}", exc_info=True)
+        return {"error": f"Internal server error: {str(e)}"}
+
+# Chat endpoint
 @app.route("/ask", methods=["POST"])
 def ask():
     data = request.get_json()
@@ -130,47 +208,61 @@ def ask():
         return jsonify({"error": "No message provided"}), 400
 
     try:
-        # Save user message to DB
-        user_chat = ChatHistory(session_id=session_id, sender='user', message=user_message)
-        db.session.add(user_chat)
-        db.session.commit()
+        with sqlite3.connect("chat_history.db") as conn:
+            conn.execute(
+                "INSERT INTO chat (session_id, sender, message) VALUES (?, ?, ?)",
+                (session_id, 'user', user_message)
+            )
+            conn.commit()
 
-        # Get conversation history for context
-        history = ChatHistory.query.filter_by(session_id=session_id).order_by(ChatHistory.id.asc()).all()
-        conversation_context = "\n".join([f"{'User' if entry.sender == 'user' else 'Chatbot'}: {entry.message}" for entry in history])
-        
-        # Get response from LLM
-        response = qa_chain.invoke({"query": user_message})
-        response_text = response.get("result", "Sorry, I encountered an issue.")
+        bot_response = chat(session_id, user_message)
 
-        # Save bot response to DB
-        bot_chat = ChatHistory(session_id=session_id, sender='bot', message=response_text)
-        db.session.add(bot_chat)
-        db.session.commit()
+        if "error" in bot_response:
+            logging.error(f"Chatbot error: {bot_response['error']}")
+            return jsonify(bot_response), 500
+
+        response_text = bot_response.get('response', 'Error')
+
+        with sqlite3.connect("chat_history.db") as conn:
+            conn.execute(
+                "INSERT INTO chat (session_id, sender, message) VALUES (?, ?, ?)",
+                (session_id, 'bot', response_text)
+            )
+            conn.commit()
 
         return jsonify({"response": response_text})
+
     except Exception as e:
-        db.session.rollback()
         logging.error(f"Exception in /ask endpoint: {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
 
+# Health check endpoint
 @app.route("/health")
 def health_check():
-    return jsonify({"status": "ready"}), 200
+    status = {
+        "llm_initialized": llm is not None,
+        "vector_db_initialized": vector_db is not None,
+        "qa_chain_initialized": qa_chain is not None,
+    }
+    all_ready = all(status.values())
+    return jsonify({
+        "status": "ready" if all_ready else "not ready",
+        "details": status
+    }), 200 if all_ready else 503
 
-# --- Main Execution Block ---
+
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()  # This creates your tables if they don't exist
+    init_db()
 
     llm = initialize_llm()
     db_path = "./chroma_db"
     vector_db = None
 
-    # This logic for loading/creating chroma_db remains the same
     if not os.path.exists(db_path):
         logging.info("Creating vector DB...")
         vector_db = create_vector_db()
+        if vector_db is None:
+            logging.error("Failed to create vector database.")
     else:
         try:
             embeddings = HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')
@@ -178,7 +270,7 @@ if __name__ == "__main__":
             logging.info("Loaded existing Chroma vector DB")
         except Exception as e:
             logging.error(f"Failed to load existing vector DB: {e}", exc_info=True)
-    
+
     qa_chain = None
     if vector_db and llm:
         qa_chain = setup_qa_chain(vector_db, llm)
