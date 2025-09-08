@@ -28,7 +28,7 @@ export default function BookAppointmentPage() {
     setResponse('');
 
     try {
-      const res = await fetch('http://localhost:5000/book-appointment', {
+      const res = await fetch('${process.env.NEXT_PUBLIC_PYTHON_API_URL}/book-appointment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
