@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -38,7 +39,10 @@ export default function ChatPage() {
     const checkHealth = () => {
       // ✅ FIX: Use backticks (`) instead of single quotes (')
       fetch(`${process.env.NEXT_PUBLIC_PYTHON_API_URL}/health`)
-        .then(res => res.json())
+        .then(res => {
+            if (res.ok) return res.json();
+            throw new Error('Network response was not ok.');
+        })
         .then(data => {
           if (isMounted) {
             setServerReady(data.status === 'ready');
@@ -160,3 +164,4 @@ export default function ChatPage() {
     </div>
   );
 }
+
