@@ -151,5 +151,7 @@ if __name__ == "__main__":
             logging.critical("AI ka koi component fail ho gaya. Application band ho rahi hai.")
         else:
             logging.info("🚀 Server shuru ho raha hai http://0.0.0.0:5000 par")
-            app.run(host='0.0.0.0', port=5000, debug=False)
+            # Render provides the PORT, or we default to 5000 for local testing
+            port = int(os.environ.get('PORT', 5000))
+            app.run(host='0.0.0.0', port=port, debug=False)
 
