@@ -35,6 +35,17 @@ export default function AboutPage() {
         {/* Person 1: Chetan */}
         <div className="flex flex-col items-center bg-gray-100 p-6 rounded-2xl shadow">
           <Image
+            src="/pushp.jpeg" // Place actual image in /public folder
+            alt="Pushp Choudhary"
+            width={150}
+            height={150}
+            className="rounded-full object-cover"
+          />
+          <h3 className="mt-4 text-xl font-semibold">Pushp Choudhary</h3>
+          <p>College: NIET</p>
+        </div>
+        <div className="flex flex-col items-center bg-gray-100 p-6 rounded-2xl shadow">
+          <Image
             src="/chetan.jpeg" // Place actual image in /public folder
             alt="Chetan Chauhan"
             width={150}
