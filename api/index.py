@@ -1,13 +1,12 @@
-
 import logging
 import os
-from datetime import datetime, timezone # timezone ko import kiya
+from datetime import datetime, timezone
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 from pymongo import MongoClient
 
-# LangChain aur AI se related imports waise hi rahenge
+# LangChain and AI-related imports
 from langchain_groq import ChatGroq
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
@@ -17,50 +16,49 @@ from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # --- Setup ---
-# .env file se saari keys load karega
+# Load all keys from the .env file
 load_dotenv()
 app = Flask(__name__)
 CORS(app) 
 logging.basicConfig(level=logging.INFO)
 
 # --- MongoDB Connection ---
-# Yahan hum SQLAlchemy ko hata kar PyMongo ka istemaal kar rahe hain
 try:
     mongo_uri = os.getenv("MONGO_URI")
     client = MongoClient(mongo_uri)
-    # Aapke MONGO_URI se database ka naam ('MindHavenDB') automatically le lega
+    # The database name will be taken automatically from your MONGO_URI
     db = client.get_default_database() 
     
-    # "Collections" banayenge (yeh SQL mein tables jaise hote hain)
+    # Create "Collections" (similar to tables in SQL)
     appointments_collection = db.appointments
     chat_history_collection = db.chat_history
     
-    logging.info("✅ MongoDB se connection safaltapoorvak jud gaya hai.")
+    logging.info("✅ Successfully connected to MongoDB.")
 except Exception as e:
-    logging.error(f"❌ MongoDB se connect nahi ho paaya: {e}")
-    db = None # Agar connection fail hota hai toh db ko None set kar denge
+    logging.error(f"❌ Could not connect to MongoDB: {e}")
+    db = None # Set db to None if connection fails
 
-# --- Health Check Route (Koi Change Nahi) ---
+# --- Health Check Route ---
 @app.route('/health')
 def health_check():
     return {"status": "ready"}, 200
 
-# --- AI Functions (Inmein Koi Change Nahi Hoga) ---
+# --- AI Functions ---
 def initialize_llm():
     try:
         groq_api_key = os.getenv("GROQ_API_KEY")
         if not groq_api_key:
-            logging.error("GROQ_API_KEY environment variable nahi mila.")
+            logging.error("GROQ_API_KEY environment variable not found.")
             return None
         llm = ChatGroq(temperature=0, groq_api_key=groq_api_key, model_name="gemma2-9b-it")
         logging.info("LLM initialized successfully")
         return llm
     except Exception as e:
-        logging.error(f"LLM initialize karte waqt error: {e}")
+        logging.error(f"Error while initializing LLM: {e}")
         return None
 
 def setup_qa_chain(vector_db, llm):
-    # Yeh function ChromaDB (AI ki library) ke liye hai, iska MongoDB se lena-dena nahi hai
+    # This function is for ChromaDB, it is independent of MongoDB
     try:
         retriever = vector_db.as_retriever()
         prompt_template = "You are a friendly AI assistant...\n{context}\nUser: {question}\nChatbot:"
@@ -71,10 +69,10 @@ def setup_qa_chain(vector_db, llm):
         logging.info("QA chain set up successfully")
         return qa_chain
     except Exception as e:
-        logging.error(f"QA chain set up karte waqt error: {e}")
+        logging.error(f"Error while setting up QA chain: {e}")
         return None
 
-# --- Routes jinko MongoDB ke liye Update Kiya Gaya Hai ---
+# --- API Routes Updated for MongoDB ---
 @app.route('/book-appointment', methods=['POST'])
 def book_appointment():
     data = request.get_json()
@@ -84,23 +82,23 @@ def book_appointment():
     message = data.get('message', '')
 
     if not all([name, email, datetime_val]):
-        return jsonify({"error": "Name, email, and datetime zaroori hain"}), 400
+        return jsonify({"error": "Name, email, and datetime are required"}), 400
     
     try:
-        # Ek "document" (dictionary) banayenge
+        # Create a document (dictionary) to insert
         appointment_doc = {
             "name": name,
             "email": email,
             "datetime_val": datetime_val,
             "message": message,
-            "submitted_at": datetime.now(timezone.utc) # Updated this line
+            "submitted_at": datetime.now(timezone.utc)
         }
-        # Is document ko 'appointments' collection mein daal denge
+        # Insert the document into the 'appointments' collection
         appointments_collection.insert_one(appointment_doc)
-        return jsonify({"message": f"Hi {name}, aapki appointment {datetime_val} ke liye book ho gayi hai."})
+        return jsonify({"message": f"Hi {name}, your appointment for {datetime_val} has been booked."})
     except Exception as e:
-        logging.error(f"Appointment book karte waqt error: {e}")
-        return jsonify({"error": "Appointment book nahi ho paayi"}), 500
+        logging.error(f"Error while booking appointment: {e}")
+        return jsonify({"error": "Could not book appointment"}), 500
 
 @app.route("/ask", methods=["POST"])
 def ask():
@@ -109,49 +107,50 @@ def ask():
     session_id = data.get("session_id", "default_session")
 
     if not user_message:
-        return jsonify({"error": "Message khaali hai"}), 400
+        return jsonify({"error": "Message is empty"}), 400
         
     try:
-        # User ke message ko MongoDB mein save karenge
+        # Save user's message to MongoDB
         chat_history_collection.insert_one({
             "session_id": session_id,
             "sender": 'user',
             "message": user_message,
-            "timestamp": datetime.now(timezone.utc) # Updated this line
+            "timestamp": datetime.now(timezone.utc)
         })
         
-        # AI se jawaab lenge
+        # Get response from AI
         response = qa_chain.invoke({"query": user_message})
-        response_text = response.get("result", "Maaf kijiye, kuch samasya aa gayi.")
+        response_text = response.get("result", "Sorry, there was an issue.")
         
-        # Bot ke jawaab ko MongoDB mein save karenge
+        # Save bot's response to MongoDB
         chat_history_collection.insert_one({
             "session_id": session_id,
             "sender": 'bot',
             "message": response_text,
-            "timestamp": datetime.now(timezone.utc) # And this line
+            "timestamp": datetime.now(timezone.utc)
         })
         
         return jsonify({"response": response_text})
     except Exception as e:
-        logging.error(f"/ask route mein error: {e}")
+        logging.error(f"Error in /ask route: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
 # --- Main Execution Block ---
+# This block runs ONLY when you execute `python index.py` on your local machine.
+# On Render, Gunicorn runs the `app` object directly and this block is ignored.
 if __name__ == "__main__":
     if db is None:
-        logging.critical("Database connection fail ho gaya. Application band ho rahi hai.")
+        logging.critical("Database connection failed. Application is shutting down.")
     else:
         llm = initialize_llm()
-        # ChromaDB waise hi load hoga, iska MongoDB se koi connection nahi hai
+        # ChromaDB is loaded here, it has no dependency on the MongoDB connection
         vector_db = Chroma(persist_directory="./chroma_db", embedding_function=HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2'))
         qa_chain = setup_qa_chain(vector_db, llm)
         
         if not all([llm, vector_db, qa_chain]):
-            logging.critical("AI ka koi component fail ho gaya. Application band ho rahi hai.")
+            logging.critical("An AI component failed to initialize. Application is shutting down.")
         else:
-            logging.info("🚀 Server shuru ho raha hai http://0.0.0.0:5000 par")
-            # Render provides the PORT, or we default to 5000 for local testing
+            # Get the port from the environment variable for Render, default to 5000 for local dev
             port = int(os.environ.get('PORT', 5000))
+            logging.info(f"🚀 Server starting on http://0.0.0.0:{port}")
             app.run(host='0.0.0.0', port=port, debug=False)
-
