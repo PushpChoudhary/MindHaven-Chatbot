@@ -1,9 +1,11 @@
-
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
 
 export default function ChatPage() {
+  // ✅ DEBUG: Let's check the value of the environment variable
+  console.log("Python API URL from chat page:", process.env.NEXT_PUBLIC_PYTHON_API_URL);
+
   // Initialize sessionId from localStorage or generate new
   const [sessionId, setSessionId] = useState(() => {
     if (typeof window !== 'undefined') {
