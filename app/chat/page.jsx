@@ -36,7 +36,8 @@ export default function ChatPage() {
     let isMounted = true;
 
     const checkHealth = () => {
-      fetch('${process.env.NEXT_PUBLIC_PYTHON_API_URL}/health')
+      // ✅ FIX: Use backticks (`) instead of single quotes (')
+      fetch(`${process.env.NEXT_PUBLIC_PYTHON_API_URL}/health`)
         .then(res => res.json())
         .then(data => {
           if (isMounted) {
@@ -71,7 +72,8 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('${process.env.NEXT_PUBLIC_PYTHON_API_URL}/ask', {
+      // ✅ FIX: Use backticks (`) instead of single quotes (')
+      const res = await fetch(`${process.env.NEXT_PUBLIC_PYTHON_API_URL}/ask`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: message, session_id: sessionId }),

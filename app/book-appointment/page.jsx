@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -28,7 +29,8 @@ export default function BookAppointmentPage() {
     setResponse('');
 
     try {
-      const res = await fetch('${process.env.NEXT_PUBLIC_PYTHON_API_URL}/book-appointment', {
+      // ✅ FIX: Use backticks (`) instead of single quotes (')
+      const res = await fetch(`${process.env.NEXT_PUBLIC_PYTHON_API_URL}/book-appointment`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -98,3 +100,4 @@ export default function BookAppointmentPage() {
     </div>
   );
 }
+
