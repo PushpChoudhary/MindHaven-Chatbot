@@ -1,3 +1,6 @@
+# Tell pip to look in PyTorch's official CPU library first
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 # Web Server & Framework
 flask==3.0.3
 flask_cors==4.0.1
@@ -19,7 +22,6 @@ langchain-chroma==0.1.2
 pypdf==4.2.0
 sentence-transformers==2.7.0
 
-# CRITICAL: AI Model Libraries (CPU-only to save memory)
-# Updated to versions compatible with Render's Python environment
-torch==2.5.0
-torchvision==0.19.0
+# AI Model Libraries - Let pip choose the correct CPU versions
+torch
+torchvision
