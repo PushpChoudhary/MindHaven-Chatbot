@@ -16,63 +16,72 @@ from langchain.prompts import PromptTemplate
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # --- Setup ---
-# Load all keys from the .env file
 load_dotenv()
 app = Flask(__name__)
 CORS(app) 
 logging.basicConfig(level=logging.INFO)
 
+# --- Global AI Components (Initialized as None) ---
+# We define the variables here but will only load the heavy models on the first API call
+llm = None
+vector_db = None
+qa_chain = None
+
 # --- MongoDB Connection ---
 try:
     mongo_uri = os.getenv("MONGO_URI")
     client = MongoClient(mongo_uri)
-    # The database name will be taken automatically from your MONGO_URI
     db = client.get_default_database() 
     
-    # Create "Collections" (similar to tables in SQL)
     appointments_collection = db.appointments
     chat_history_collection = db.chat_history
     
     logging.info("✅ Successfully connected to MongoDB.")
 except Exception as e:
     logging.error(f"❌ Could not connect to MongoDB: {e}")
-    db = None # Set db to None if connection fails
+    db = None
 
 # --- Health Check Route ---
 @app.route('/health')
 def health_check():
     return {"status": "ready"}, 200
 
-# --- AI Functions ---
-def initialize_llm():
-    try:
-        groq_api_key = os.getenv("GROQ_API_KEY")
-        if not groq_api_key:
-            logging.error("GROQ_API_KEY environment variable not found.")
-            return None
-        llm = ChatGroq(temperature=0, groq_api_key=groq_api_key, model_name="gemma2-9b-it")
-        logging.info("LLM initialized successfully")
-        return llm
-    except Exception as e:
-        logging.error(f"Error while initializing LLM: {e}")
-        return None
+# --- AI Initialization Function (Lazy Loading) ---
+def initialize_ai_components():
+    """
+    This function loads the heavy AI models into the global variables.
+    It's designed to run only once, on the first call to the /ask endpoint.
+    """
+    global llm, vector_db, qa_chain
+    
+    # The 'if qa_chain is None' check ensures this block runs only once.
+    if qa_chain is None:
+        logging.info("First request received. Initializing AI components...")
+        try:
+            llm = ChatGroq(temperature=0, groq_api_key=os.getenv("GROQ_API_KEY"), model_name="gemma2-9b-it")
+            
+            vector_db = Chroma(
+                persist_directory="./chroma_db", 
+                embedding_function=HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2')
+            )
+            
+            retriever = vector_db.as_retriever()
+            prompt_template = "You are a friendly AI assistant...\n{context}\nUser: {question}\nChatbot:"
+            PROMPT = PromptTemplate(template=prompt_template, input_variables=['context', 'question'])
+            
+            qa_chain = RetrievalQA.from_chain_type(
+                llm=llm, 
+                chain_type="stuff", 
+                retriever=retriever, 
+                chain_type_kwargs={"prompt": PROMPT}
+            )
+            logging.info("✅ AI components initialized successfully.")
+        except Exception as e:
+            logging.error(f"❌ Error during AI component initialization: {e}")
+            # Ensure qa_chain is not partially initialized
+            qa_chain = None 
 
-def setup_qa_chain(vector_db, llm):
-    # This function is for ChromaDB, it is independent of MongoDB
-    try:
-        retriever = vector_db.as_retriever()
-        prompt_template = "You are a friendly AI assistant...\n{context}\nUser: {question}\nChatbot:"
-        PROMPT = PromptTemplate(template=prompt_template, input_variables=['context', 'question'])
-        qa_chain = RetrievalQA.from_chain_type(
-            llm=llm, chain_type="stuff", retriever=retriever, chain_type_kwargs={"prompt": PROMPT}
-        )
-        logging.info("QA chain set up successfully")
-        return qa_chain
-    except Exception as e:
-        logging.error(f"Error while setting up QA chain: {e}")
-        return None
-
-# --- API Routes Updated for MongoDB ---
+# --- API Routes ---
 @app.route('/book-appointment', methods=['POST'])
 def book_appointment():
     data = request.get_json()
@@ -85,15 +94,10 @@ def book_appointment():
         return jsonify({"error": "Name, email, and datetime are required"}), 400
     
     try:
-        # Create a document (dictionary) to insert
         appointment_doc = {
-            "name": name,
-            "email": email,
-            "datetime_val": datetime_val,
-            "message": message,
-            "submitted_at": datetime.now(timezone.utc)
+            "name": name, "email": email, "datetime_val": datetime_val, 
+            "message": message, "submitted_at": datetime.now(timezone.utc)
         }
-        # Insert the document into the 'appointments' collection
         appointments_collection.insert_one(appointment_doc)
         return jsonify({"message": f"Hi {name}, your appointment for {datetime_val} has been booked."})
     except Exception as e:
@@ -102,6 +106,14 @@ def book_appointment():
 
 @app.route("/ask", methods=["POST"])
 def ask():
+    # This line ensures the AI models are loaded before we use them.
+    # After the first call, it will do nothing.
+    initialize_ai_components()
+
+    # If initialization failed, qa_chain will be None.
+    if qa_chain is None:
+        return jsonify({"error": "AI service is currently unavailable. Initialization failed."}), 503
+
     data = request.get_json()
     user_message = data.get("message", "")
     session_id = data.get("session_id", "default_session")
@@ -110,24 +122,18 @@ def ask():
         return jsonify({"error": "Message is empty"}), 400
         
     try:
-        # Save user's message to MongoDB
         chat_history_collection.insert_one({
-            "session_id": session_id,
-            "sender": 'user',
-            "message": user_message,
-            "timestamp": datetime.now(timezone.utc)
+            "session_id": session_id, "sender": 'user', 
+            "message": user_message, "timestamp": datetime.now(timezone.utc)
         })
         
-        # Get response from AI
+        # The 'qa_chain' variable is used here just like in your original code
         response = qa_chain.invoke({"query": user_message})
         response_text = response.get("result", "Sorry, there was an issue.")
         
-        # Save bot's response to MongoDB
         chat_history_collection.insert_one({
-            "session_id": session_id,
-            "sender": 'bot',
-            "message": response_text,
-            "timestamp": datetime.now(timezone.utc)
+            "session_id": session_id, "sender": 'bot', 
+            "message": response_text, "timestamp": datetime.now(timezone.utc)
         })
         
         return jsonify({"response": response_text})
@@ -135,22 +141,8 @@ def ask():
         logging.error(f"Error in /ask route: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
-# --- Main Execution Block ---
-# This block runs ONLY when you execute `python index.py` on your local machine.
-# On Render, Gunicorn runs the `app` object directly and this block is ignored.
+# This block is now only for local testing and is not needed for Vercel deployment.
 if __name__ == "__main__":
-    if db is None:
-        logging.critical("Database connection failed. Application is shutting down.")
-    else:
-        llm = initialize_llm()
-        # ChromaDB is loaded here, it has no dependency on the MongoDB connection
-        vector_db = Chroma(persist_directory="./chroma_db", embedding_function=HuggingFaceEmbeddings(model_name='sentence-transformers/all-MiniLM-L6-v2'))
-        qa_chain = setup_qa_chain(vector_db, llm)
-        
-        if not all([llm, vector_db, qa_chain]):
-            logging.critical("An AI component failed to initialize. Application is shutting down.")
-        else:
-            # Get the port from the environment variable for Render, default to 5000 for local dev
-            port = int(os.environ.get('PORT', 5000))
-            logging.info(f"🚀 Server starting on http://0.0.0.0:{port}")
-            app.run(host='0.0.0.0', port=port, debug=False)
+    port = int(os.environ.get('PORT', 5000))
+    logging.info(f"🚀 Server starting for local testing on http://0.0.0.0:{port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
