@@ -1,14 +1,25 @@
-flask
-flask_cors
-python-dotenv
-pymongo
-gunicorn
-langchain
-langchain-groq
-langchain-huggingface
-langchain-community
-langchain-chroma
-sentence-transformers
-pypdf
-chromadb
-gunicorn
+# Web Server & Framework
+flask==3.0.3
+flask_cors==4.0.1
+gunicorn==22.0.0
+
+# Environment & Database
+python-dotenv==1.0.1
+pymongo==4.8.0
+
+# LangChain Core and Integrations
+langchain==0.2.6
+langchain-community==0.2.6
+langchain-groq==0.1.6
+langchain-huggingface==0.0.3
+
+# Vector Database & Embeddings
+chromadb==0.5.3
+langchain-chroma==0.1.2
+pypdf==4.2.0
+sentence-transformers==2.7.0
+
+# CRITICAL: AI Model Libraries (CPU-only to save memory)
+# These are required by sentence-transformers and are the main cause of memory issues.
+torch==2.3.1
+torchvision==0.18.1
