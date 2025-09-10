@@ -20,6 +20,6 @@ pypdf==4.2.0
 sentence-transformers==2.7.0
 
 # CRITICAL: AI Model Libraries (CPU-only to save memory)
-# These are required by sentence-transformers and are the main cause of memory issues.
-torch==2.3.1
-torchvision==0.18.1
+# Updated to versions compatible with Render's Python environment
+torch==2.5.0
+torchvision==0.19.0
