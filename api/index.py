@@ -45,7 +45,16 @@ except Exception as e:
 @app.route('/health')
 def health_check():
     return {"status": "ready"}, 200
+# --- Add this new route to your index.py file ---
 
+@app.route('/')
+def home():
+    return jsonify({
+        "status": "online",
+        "message": "Welcome to the MindHaven Chatbot API!"
+    })
+
+# --- Your other routes like /book-appointment and /ask stay the same ---
 # --- AI Initialization Function (Lazy Loading) ---
 def initialize_ai_components():
     """
